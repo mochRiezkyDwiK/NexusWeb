@@ -1,65 +1,119 @@
-import Image from "next/image";
+import { db } from "@/db";
+import { products } from "@/db/schema";
+import { Navbar } from "@/app/components/Navbar";
+import { HeroSection } from "@/app/components/HeroSection";
+import { ProductGrid } from "@/app/components/ProductGrid";
+import { AddProductModal } from "@/app/components/AddProductModal";
 
-export default function Home() {
+export const dynamic = "force-dynamic";
+
+export default async function Home() {
+  // Fetch all products from TiDB Cloud
+  const allProducts = await db.select().from(products);
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
+      {/* Navigation */}
+      <Navbar />
+
+      {/* Hero Section */}
+      <HeroSection />
+
+      {/* Product Grid Section */}
+      <ProductGrid products={allProducts} />
+
+      {/* Floating Add Product Button & Modal */}
+      <AddProductModal />
+
+      {/* Footer */}
+      <footer className="bg-slate-950/80 border-t border-slate-800/50 py-12 px-4 mt-20">
+        <div className="max-w-7xl mx-auto">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
+            {/* Brand */}
+            <div>
+              <div className="text-lg font-black mb-4">
+                <span className="text-white">NEXUS</span>
+                <span className="text-cyan-400">WEB</span>
+              </div>
+              <p className="text-slate-400 text-sm">
+                Premium marketplace dengan teknologi cloud terdepan.
+              </p>
+            </div>
+
+            {/* Quick Links */}
+            <div>
+              <h4 className="text-white font-bold mb-4">Quick Links</h4>
+              <ul className="space-y-2 text-sm text-slate-400">
+                <li>
+                  <a href="#" className="hover:text-cyan-400 transition-colors">
+                    Home
+                  </a>
+                </li>
+                <li>
+                  <a href="#products" className="hover:text-cyan-400 transition-colors">
+                    Products
+                  </a>
+                </li>
+                <li>
+                  <a href="#" className="hover:text-cyan-400 transition-colors">
+                    About
+                  </a>
+                </li>
+              </ul>
+            </div>
+
+            {/* Legal */}
+            <div>
+              <h4 className="text-white font-bold mb-4">Legal</h4>
+              <ul className="space-y-2 text-sm text-slate-400">
+                <li>
+                  <a href="#" className="hover:text-cyan-400 transition-colors">
+                    Privacy
+                  </a>
+                </li>
+                <li>
+                  <a href="#" className="hover:text-cyan-400 transition-colors">
+                    Terms
+                  </a>
+                </li>
+                <li>
+                  <a href="#" className="hover:text-cyan-400 transition-colors">
+                    Cookies
+                  </a>
+                </li>
+              </ul>
+            </div>
+
+            {/* Contact */}
+            <div>
+              <h4 className="text-white font-bold mb-4">Contact</h4>
+              <ul className="space-y-2 text-sm text-slate-400">
+                <li>Email: hello@nexusweb.id</li>
+                <li>Phone: +62 800-NEXUS-ID</li>
+                <li>Location: Jakarta, Indonesia</li>
+              </ul>
+            </div>
+          </div>
+
+          {/* Bottom bar */}
+          <div className="border-t border-slate-800/50 pt-8 flex flex-col md:flex-row items-center justify-between">
+            <p className="text-sm text-slate-500">
+              © 2024 NEXUSWEB. Semua hak dilindungi.
+            </p>
+            <div className="flex gap-6 mt-4 md:mt-0">
+              <a href="#" className="text-slate-500 hover:text-cyan-400 transition-colors text-sm">
+                Twitter
+              </a>
+              <a href="#" className="text-slate-500 hover:text-cyan-400 transition-colors text-sm">
+                Instagram
+              </a>
+              <a href="#" className="text-slate-500 hover:text-cyan-400 transition-colors text-sm">
+                LinkedIn
+              </a>
+            </div>
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+      </footer>
     </div>
   );
 }
