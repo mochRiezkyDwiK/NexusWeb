@@ -1,11 +1,23 @@
 import { db } from "@/db";
 import { products } from "@/db/schema";
 import { ClientSections } from "@/app/components/ClientSections";
+import { unstable_noStore as noStore } from "next/cache";
+import { auth } from "@/auth";
 
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
+  noStore();
+
   const allProducts = await db.select().from(products);
+  const session = await auth();
+  const adminEmail = process.env.AUTH_ADMIN_EMAIL?.trim().toLowerCase();
+  const sessionEmail = session?.user?.email?.trim().toLowerCase();
+  const isAdmin = session?.user?.role === "admin" || Boolean(adminEmail && sessionEmail && sessionEmail === adminEmail);
+  console.log("Current Session:", session);
+
+  console.log("[Home] products fetched:", allProducts.length);
+  console.log("[Home] products payload:", allProducts);
 
   return (
     <div
@@ -74,7 +86,7 @@ export default async function Home() {
         .scrollbar-none { -ms-overflow-style: none; scrollbar-width: none; }
       `}</style>
 
-      <ClientSections products={allProducts} />
+      <ClientSections products={allProducts} session={session} isAdmin={isAdmin} />
     </div>
   );
 }

@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@auth/drizzle-adapter": "^1.11.0",
     "@prisma/client": "^7.7.0",
     "@prisma/config": "^7.7.0",
     "@tidbcloud/serverless": "^0.3.0",
@@ -16,6 +17,7 @@
     "framer-motion": "^12.38.0",
     "lucide-react": "^1.8.0",
     "next": "16.2.4",
+    "next-auth": "^5.0.0-beta.29",
     "prisma": "^7.7.0",
     "react": "19.2.4",
     "react-dom": "19.2.4"

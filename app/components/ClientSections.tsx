@@ -10,15 +10,20 @@ import {
   useMotionValue,
   useSpring,
 } from "framer-motion";
-import { useRef, useState, useEffect } from "react";
+import { useActionState, useRef, useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { signIn, signOut } from "next-auth/react";
+import type { Session } from "next-auth";
+import { useFormStatus } from "react-dom";
 import {
   Zap, Star, Shield, Globe, Package, ArrowRight, Plus,
   ChevronDown, X, Loader2, Check, Menu,
   Mail, Phone, MapPin, Send, TrendingUp, Users,
   Clock, ChevronRight, ExternalLink, Copy, CheckCheck, MessageCircle,
   Cpu, Database, Lock, BarChart3,
-  AlertCircle,
+  AlertCircle, Trash2, Pencil,
 } from "lucide-react";
+import { addProductAction, updateProductAction, deleteProductAction, saveContactMessage } from "@/app/lib/actions";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 interface Product {
@@ -27,9 +32,12 @@ interface Product {
   price: string | number;
   description: string | null;
   category?: string;
+  sourceUrl?: string | null;
   createdAt?: string | Date | null;
+  source_url?: string | null;
+  created_at?: string | Date | null;
 }
-interface Props { products: Product[] }
+interface Props { products: Product[]; session: Session | null; isAdmin?: boolean }
 
 // ── Easing ───────────────────────────────────────────────────────────────────
 const ease = [0.22, 1, 0.36, 1] as const;
@@ -80,6 +88,108 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
+function FloatingField({
+  id,
+  label,
+  value,
+  onChange,
+  multiline = false,
+  type = "text",
+  inputRef,
+  inputMode,
+  enterKeyHint,
+  onKeyDown,
+  autoComplete,
+  name,
+  rows = 3,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  multiline?: boolean;
+  type?: string;
+  inputRef?: React.Ref<HTMLInputElement | HTMLTextAreaElement>;
+  inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
+  enterKeyHint?: React.InputHTMLAttributes<HTMLInputElement>["enterKeyHint"];
+  onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
+  autoComplete?: string;
+  name?: string;
+  rows?: number;
+}) {
+  const base = "peer w-full bg-slate-900/50 border rounded-xl px-4 pt-6 pb-3 text-white text-sm transition-all duration-200 placeholder-transparent";
+  const borderCls = "border-slate-700/50 hover:border-slate-600/60 focus:border-cyan-400/50 focus:shadow-[0_0_0_3px_rgba(6,182,212,0.06)]";
+
+  return (
+    <div className="relative group">
+      <label
+        htmlFor={id}
+        className="absolute left-4 top-4 pointer-events-none font-medium text-sm text-slate-500 transition-all duration-200 peer-focus:top-2.5 peer-focus:text-[10px] peer-focus:text-cyan-400 peer-focus:tracking-widest peer-focus:uppercase peer-not-placeholder-shown:top-2.5 peer-not-placeholder-shown:text-[10px] peer-not-placeholder-shown:text-cyan-400 peer-not-placeholder-shown:tracking-widest peer-not-placeholder-shown:uppercase"
+      >
+        {label}
+      </label>
+      {multiline ? (
+        <textarea
+          id={id}
+          rows={rows}
+          ref={inputRef as React.Ref<HTMLTextAreaElement>}
+          name={name}
+          value={value}
+          placeholder=" "
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={onKeyDown}
+          enterKeyHint={enterKeyHint}
+          autoComplete={autoComplete}
+          className={`${base} ${borderCls} min-h-30 resize-y`}
+        />
+      ) : (
+        <input
+          id={id}
+          type={type}
+          ref={inputRef as React.Ref<HTMLInputElement>}
+          name={name}
+          value={value}
+          placeholder=" "
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={onKeyDown}
+          inputMode={inputMode}
+          enterKeyHint={enterKeyHint}
+          autoComplete={autoComplete}
+          className={`${base} ${borderCls}`}
+        />
+      )}
+    </div>
+  );
+}
+
+function ContactSubmitButton({ isSuccess }: { isSuccess: boolean }) {
+  const { pending } = useFormStatus();
+  let content: React.ReactNode;
+
+  if (pending) {
+    content = <><Loader2 size={16} className="animate-spin" /> Mengirim...</>;
+  } else if (isSuccess) {
+    content = <><Check size={15} /> Pesan Terkirim!</>;
+  } else {
+    content = <><Send size={15} /> Kirim Pesan</>;
+  }
+
+  return (
+    <button
+      type="submit"
+      disabled={pending || isSuccess}
+      className="w-full h-12 rounded-xl font-bold text-sm text-white flex items-center justify-center gap-2.5 relative overflow-hidden disabled:opacity-60"
+      style={{ background: "linear-gradient(135deg,#06b6d4,#6366f1)" }}
+    >
+      {content}
+      <motion.div className="absolute inset-0 bg-linear-to-r from-transparent via-white/10 to-transparent"
+        initial={{ x: "-200%" }}
+        whileHover={{ x: "200%" }}
+        transition={{ duration: 0.5 }} />
+    </button>
+  );
+}
+
 // ── Magnetic Button ───────────────────────────────────────────────────────────
 function MagneticBtn({ children, onClick, className = "", style = {} }: {
   children: React.ReactNode; onClick?: () => void; className?: string; style?: React.CSSProperties;
@@ -107,7 +217,7 @@ function MagneticBtn({ children, onClick, className = "", style = {} }: {
 }
 
 // ── Navbar ────────────────────────────────────────────────────────────────────
-function Navbar({ onAddProduct }: { onAddProduct: () => void }) {
+function Navbar({ onAddProduct, isAdmin, isLoggedIn }: { onAddProduct: () => void; isAdmin: boolean; isLoggedIn: boolean }) {
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [active, setActive] = useState("");
@@ -169,19 +279,39 @@ function Navbar({ onAddProduct }: { onAddProduct: () => void }) {
 
           {/* CTA */}
           <div className="hidden md:flex items-center gap-3">
-            <motion.button onClick={onAddProduct}
-              whileHover={{ scale: 1.03, boxShadow: "0 0 24px rgba(6,182,212,0.3)" }}
-              whileTap={{ scale: 0.97 }}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white relative overflow-hidden"
-              style={{ background: "linear-gradient(135deg,#06b6d4,#6366f1)" }}>
-              <Plus size={14} />
-              Add Product
-              <motion.div className="absolute inset-0 bg-white/10"
-                initial={{ x: "-100%", skewX: -20 }}
-                whileHover={{ x: "200%" }}
-                transition={{ duration: 0.45 }}
-              />
-            </motion.button>
+            {isLoggedIn ? (
+              <button
+                type="button"
+                onClick={() => signOut({ redirectTo: "/" })}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-200 border border-slate-700/60 hover:bg-slate-800/60 transition-colors"
+              >
+                Logout
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => signIn("github")}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-200 border border-slate-700/60 hover:bg-slate-800/60 transition-colors"
+              >
+                Login
+              </button>
+            )}
+
+            {isAdmin && (
+              <motion.button onClick={onAddProduct}
+                whileHover={{ scale: 1.03, boxShadow: "0 0 24px rgba(6,182,212,0.3)" }}
+                whileTap={{ scale: 0.97 }}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white relative overflow-hidden"
+                style={{ background: "linear-gradient(135deg,#06b6d4,#6366f1)" }}>
+                <Plus size={14} />
+                Add Product
+                <motion.div className="absolute inset-0 bg-white/10"
+                  initial={{ x: "-100%", skewX: -20 }}
+                  whileHover={{ x: "200%" }}
+                  transition={{ duration: 0.45 }}
+                />
+              </motion.button>
+            )}
           </div>
 
           {/* Mobile toggle */}
@@ -206,11 +336,28 @@ function Navbar({ onAddProduct }: { onAddProduct: () => void }) {
               </a>
             ))}
             <div className="pt-2">
-              <button onClick={() => { onAddProduct(); setMobileOpen(false); }}
-                className="w-full py-3 rounded-xl text-sm font-bold text-white"
-                style={{ background: "linear-gradient(135deg,#06b6d4,#6366f1)" }}>
-                + Add Product
-              </button>
+              {isAdmin ? (
+                <button onClick={() => { onAddProduct(); setMobileOpen(false); }}
+                  className="w-full py-3 rounded-xl text-sm font-bold text-white"
+                  style={{ background: "linear-gradient(135deg,#06b6d4,#6366f1)" }}>
+                  + Add Product
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileOpen(false);
+                    if (isLoggedIn) {
+                      signOut({ redirectTo: "/" });
+                    } else {
+                      signIn("github");
+                    }
+                  }}
+                  className="w-full py-3 rounded-xl text-sm font-bold text-slate-100 border border-slate-700/60"
+                >
+                  {isLoggedIn ? "Logout" : "Login"}
+                </button>
+              )}
             </div>
           </motion.div>
         )}
@@ -581,14 +728,20 @@ const BADGES = [
   { label: "🚀 Trending", bg: "rgba(244,114,182,0.12)", color: "#f472b6", border: "rgba(244,114,182,0.25)" },
 ];
 
-function ProductCard({ product, index, size = "sm" }: {
-  product: Product; index: number; size?: "sm" | "md" | "lg";
+function ProductCard({ product, index, size = "sm", onEdit, onDelete, canManage }: {
+  product: Product;
+  index: number;
+  size?: "sm" | "md" | "lg";
+  onEdit: (product: Product) => void;
+  onDelete: (productId: number) => void;
+  canManage: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const [tilt, setTilt] = useState({ x: 0, y: 0 });
   const badge = BADGES[index % BADGES.length];
   const price = Number.parseFloat(String(product.price)) || 0;
+  const imageUrl = product.sourceUrl ?? product.source_url ?? "";
 
   const onMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!ref.current) return;
@@ -627,28 +780,63 @@ function ProductCard({ product, index, size = "sm" }: {
           boxShadow: hovered ? "0 0 30px rgba(6,182,212,0.08)" : "none",
         }}>
         <div className="absolute top-0 left-4 right-4 h-px bg-linear-to-r from-transparent via-slate-700/50 to-transparent group-hover:via-cyan-500/40 transition-all" />
+        {canManage && (
+          <div className="absolute top-3 right-3 z-20 flex items-center gap-1.5">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit(product);
+              }}
+              className="h-8 w-8 rounded-lg border border-cyan-500/30 bg-slate-900/75 text-cyan-300 transition-colors hover:bg-cyan-500/20"
+              aria-label="Edit product"
+              title="Edit product"
+            >
+              <Pencil size={14} className="mx-auto" />
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(product.id);
+              }}
+              className="h-8 w-8 rounded-lg border border-red-500/35 bg-slate-900/75 text-red-300 transition-colors hover:bg-red-500/20"
+              aria-label="Delete product"
+              title="Delete product"
+            >
+              <Trash2 size={14} className="mx-auto" />
+            </button>
+          </div>
+        )}
 
         {/* Image area */}
         <div className="relative overflow-hidden"
           style={{ height: previewHeight }}>
-          <div className="absolute inset-0 flex items-center justify-center"
-            style={{ background: "linear-gradient(135deg,rgba(6,182,212,0.04),rgba(99,102,241,0.04))" }}>
-            {/* Animated rings */}
-            <div className="relative">
-              {hovered && (
-                <motion.div className="absolute inset-0 rounded-2xl border border-cyan-500/30"
-                  animate={{ scale: [1, 1.5], opacity: [0.5, 0] }}
-                  transition={{ duration: 1, repeat: Infinity }} />
-              )}
-              <div className="w-14 h-14 rounded-2xl flex items-center justify-center"
-                style={{
-                  background: "linear-gradient(135deg,rgba(6,182,212,0.15),rgba(99,102,241,0.15))",
-                  border: "1px solid rgba(6,182,212,0.2)",
-                }}>
-                <Package size={24} className="text-cyan-400/70" />
+          {imageUrl ? (
+            <img
+              src={imageUrl}
+              alt={product.name}
+              className="absolute inset-0 h-full w-full object-cover"
+              loading="lazy"
+            />
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center"
+              style={{ background: "linear-gradient(135deg,rgba(6,182,212,0.04),rgba(99,102,241,0.04))" }}>
+              {/* Animated rings */}
+              <div className="relative">
+                {hovered && (
+                  <motion.div className="absolute inset-0 rounded-2xl border border-cyan-500/30"
+                    animate={{ scale: [1, 1.5], opacity: [0.5, 0] }}
+                    transition={{ duration: 1, repeat: Infinity }} />
+                )}
+                <div className="w-14 h-14 rounded-2xl flex items-center justify-center"
+                  style={{
+                    background: "linear-gradient(135deg,rgba(6,182,212,0.15),rgba(99,102,241,0.15))",
+                    border: "1px solid rgba(6,182,212,0.2)",
+                  }}>
+                  <Package size={24} className="text-cyan-400/70" />
+                </div>
               </div>
             </div>
-          </div>
+          )}
           {/* Corner accents */}
           <div className="absolute top-3 left-3 w-4 h-4 border-t border-l border-cyan-500/25 rounded-tl-lg" />
           <div className="absolute bottom-3 right-3 w-4 h-4 border-b border-r border-indigo-500/25 rounded-br-lg" />
@@ -692,8 +880,30 @@ function ProductCard({ product, index, size = "sm" }: {
   );
 }
 
-function Products({ onAddProduct }: { onAddProduct: () => void }) {
+function Products({ products, onAddProduct, onEditProduct, onDeleteProduct, canManage }: {
+  products: Product[];
+  onAddProduct: () => void;
+  onEditProduct: (product: Product) => void;
+  onDeleteProduct: (productId: number) => void;
+  canManage: boolean;
+}) {
   const [filter, setFilter] = useState("All");
+  const visibleProducts =
+    filter === "All"
+      ? products
+      : products.filter((p) => (p.category ?? "").toLowerCase().includes(filter.toLowerCase()));
+  const productsToRender = visibleProducts.length > 0 ? visibleProducts : products;
+  const getCardClassName = (index: number) => {
+    if (index % 7 === 0) return "col-span-2 row-span-2";
+    if (index % 5 === 0) return "col-span-2";
+    if (index % 4 === 0) return "row-span-2";
+    return "";
+  };
+  const getCardSize = (index: number): "sm" | "md" | "lg" => {
+    if (index % 7 === 0) return "lg";
+    if (index % 4 === 0) return "md";
+    return "sm";
+  };
 
   return (
     <section id="products" className="py-28 px-4">
@@ -723,49 +933,47 @@ function Products({ onAddProduct }: { onAddProduct: () => void }) {
           ))}
         </FadeIn>
 
-        {/* Bento Grid */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 auto-rows-[220px] gap-4">
-          {/* Empty state */}
-          {/* Replace this block with actual products when available */}
-          <FadeIn className="col-span-full flex flex-col items-center justify-center py-24 gap-6">
-            <motion.div animate={{ y: [0, -8, 0] }}
-              transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-              className="w-20 h-20 rounded-3xl flex items-center justify-center"
-              style={{
-                background: "linear-gradient(135deg,rgba(6,182,212,0.1),rgba(99,102,241,0.1))",
-                border: "1px solid rgba(6,182,212,0.2)",
-              }}>
-              <Package size={36} className="text-cyan-400" />
-            </motion.div>
-            <div className="text-center">
-              <h3 className="font-display text-2xl font-black text-white mb-2">Belum Ada Produk</h3>
-              <p className="text-slate-400 text-sm max-w-xs">Jadilah yang pertama menambahkan produk premium di NEXUSWEB.</p>
-            </div>
-            <MagneticBtn onClick={onAddProduct}
-              className="flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold text-white"
-              style={{ background: "linear-gradient(135deg,#06b6d4,#6366f1)" }}>
-              <Plus size={15} /> Tambah Produk Pertama
-            </MagneticBtn>
-          </FadeIn>
-        </div>
-
-        {/* Product grid — rendered when products exist (uncomment below, remove empty state above) */}
-        {/* products.length > 0 && (
+        {products.length === 0 ? (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 auto-rows-[220px] gap-4">
-            {products.map((p, i) => (
-              <FadeIn key={p.id} delay={i * 0.05}
-                className={
-                  i % 7 === 0 ? "col-span-2 row-span-2"
-                  : i % 5 === 0 ? "col-span-2"
-                  : i % 4 === 0 ? "row-span-2"
-                  : ""
-                }>
-                <ProductCard product={p} index={i}
-                  size={i % 7 === 0 ? "lg" : i % 4 === 0 ? "md" : "sm"} />
+            <FadeIn className="col-span-full flex flex-col items-center justify-center py-24 gap-6">
+              <motion.div animate={{ y: [0, -8, 0] }}
+                transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+                className="w-20 h-20 rounded-3xl flex items-center justify-center"
+                style={{
+                  background: "linear-gradient(135deg,rgba(6,182,212,0.1),rgba(99,102,241,0.1))",
+                  border: "1px solid rgba(6,182,212,0.2)",
+                }}>
+                <Package size={36} className="text-cyan-400" />
+              </motion.div>
+              <div className="text-center">
+                <h3 className="font-display text-2xl font-black text-white mb-2">Belum Ada Produk</h3>
+                <p className="text-slate-400 text-sm max-w-xs">Jadilah yang pertama menambahkan produk premium di NEXUSWEB.</p>
+              </div>
+              {canManage && (
+                <MagneticBtn onClick={onAddProduct}
+                  className="flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold text-white"
+                  style={{ background: "linear-gradient(135deg,#06b6d4,#6366f1)" }}>
+                  <Plus size={15} /> Tambah Produk Pertama
+                </MagneticBtn>
+              )}
+            </FadeIn>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 auto-rows-[220px] gap-4">
+            {productsToRender.map((p, i) => (
+              <FadeIn key={p.id} delay={i * 0.05} className={getCardClassName(i)}>
+                <ProductCard
+                  product={p}
+                  index={i}
+                  size={getCardSize(i)}
+                  onEdit={onEditProduct}
+                  onDelete={onDeleteProduct}
+                  canManage={canManage}
+                />
               </FadeIn>
             ))}
           </div>
-        ) */}
+        )}
       </div>
     </section>
   );
@@ -773,23 +981,18 @@ function Products({ onAddProduct }: { onAddProduct: () => void }) {
 
 // ── Contact ───────────────────────────────────────────────────────────────────
 function Contact() {
+  const initialContactState = { success: false, message: null as string | null };
+  const [actionState, formAction] = useActionState(saveContactMessage, initialContactState);
   const [form, setForm] = useState({ name: "", email: "", subject: "", message: "" });
-  const [focused, setFocused] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [sent, setSent] = useState(false);
-  const [error, setError] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const set = (k: string) => (v: string) => setForm((f) => ({ ...f, [k]: v }));
 
-  const handleSubmit = async () => {
-    if (!form.name || !form.email || !form.message) { setError(true); return; }
-    setError(false);
-    setLoading(true);
-    await new Promise((r) => setTimeout(r, 1600));
-    setLoading(false);
-    setSent(true);
-  };
+  useEffect(() => {
+    if (actionState.success) {
+      setForm({ name: "", email: "", subject: "", message: "" });
+    }
+  }, [actionState.success]);
 
   const copyEmail = () => {
     navigator.clipboard.writeText("hello@nexusweb.id");
@@ -822,46 +1025,6 @@ function Contact() {
     { icon: MessageCircle, label: "Chat", href: "#" },
     { icon: Send, label: "Support", href: "#" },
   ];
-
-  const FloatingField = ({ id, label, value, onChange, multiline = false, type = "text" }: {
-    id: string; label: string; value: string; onChange: (v: string) => void;
-    multiline?: boolean; type?: string;
-  }) => {
-    const active = focused === id || value.length > 0;
-    const isFocused = focused === id;
-    const base = `w-full bg-slate-900/40 border rounded-xl px-4 pt-6 pb-3 text-white text-sm transition-all duration-200 resize-none`;
-    const borderCls = isFocused
-      ? "border-cyan-400/50 shadow-[0_0_0_3px_rgba(6,182,212,0.06)]"
-      : "border-slate-700/50 hover:border-slate-600/60";
-    return (
-      <div className="relative">
-        <label htmlFor={id}
-          className={`absolute left-4 pointer-events-none font-medium transition-all duration-200 ${
-            active ? "top-2.5 text-[10px] text-cyan-400 tracking-widest uppercase" : "top-4.5 text-sm text-slate-500"
-          }`}
-          style={{ top: active ? "10px" : "17px" }}>
-          {label}
-        </label>
-        {multiline ? (
-          <textarea id={id} rows={4} value={value}
-            onChange={(e) => onChange(e.target.value)}
-            onFocus={() => setFocused(id)}
-            onBlur={() => setFocused(null)}
-            className={`${base} ${borderCls}`}
-            style={{ background: "rgba(15,23,42,0.5)" }}
-          />
-        ) : (
-          <input id={id} type={type} value={value}
-            onChange={(e) => onChange(e.target.value)}
-            onFocus={() => setFocused(id)}
-            onBlur={() => setFocused(null)}
-            className={`${base} ${borderCls}`}
-            style={{ background: "rgba(15,23,42,0.5)" }}
-          />
-        )}
-      </div>
-    );
-  };
 
   return (
     <section id="contact" className="py-28 px-4">
@@ -952,7 +1115,7 @@ function Contact() {
               <div className="absolute top-0 left-6 right-6 h-px bg-linear-to-r from-transparent via-cyan-500/30 to-transparent" />
 
               <AnimatePresence mode="wait">
-                {sent ? (
+                {actionState.success ? (
                   <motion.div key="success" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
                     className="flex flex-col items-center justify-center py-16 text-center">
                     <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }}
@@ -963,7 +1126,7 @@ function Contact() {
                     </motion.div>
                     <h3 className="font-display text-2xl font-black text-white mb-2">Pesan Terkirim!</h3>
                     <p className="text-slate-400 text-sm max-w-xs">Tim kami akan menghubungi Anda dalam 2 jam kerja. Terima kasih!</p>
-                    <button onClick={() => { setSent(false); setForm({ name: "", email: "", subject: "", message: "" }); }}
+                    <button onClick={() => { setForm({ name: "", email: "", subject: "", message: "" }); }}
                       className="mt-6 text-sm text-cyan-400 hover:text-cyan-300 transition-colors flex items-center gap-1.5">
                       <ArrowRight size={13} /> Kirim Pesan Lain
                     </button>
@@ -975,49 +1138,37 @@ function Contact() {
                       <p className="text-slate-400 text-sm mt-1">Isi form di bawah dan kami akan segera merespon.</p>
                     </div>
 
-                    {error && (
+                    {actionState.message && !actionState.success && (
                       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
                         className="flex items-center gap-2 p-3 rounded-xl bg-red-500/8 border border-red-500/20 text-red-400 text-xs">
                         <AlertCircle size={14} />
-                        Mohon lengkapi semua field yang wajib diisi.
+                        {actionState.message}
                       </motion.div>
                     )}
 
-                    <div className="grid grid-cols-2 gap-4">
-                      <FloatingField id="name" label="Nama Lengkap *" value={form.name} onChange={set("name")} />
-                      <FloatingField id="email" label="Email *" type="email" value={form.email} onChange={set("email")} />
-                    </div>
-                    <FloatingField id="subject" label="Subjek" value={form.subject} onChange={set("subject")} />
-                    <FloatingField id="message" label="Pesan *" value={form.message} onChange={set("message")} multiline />
-
-                    {/* Category chips */}
-                    <div>
-                      <div className="text-[10px] text-slate-500 uppercase tracking-widest font-bold mb-2">Topik</div>
-                      <div className="flex gap-2 flex-wrap">
-                        {["Umum", "Partnership", "Technical", "Billing", "Karir"].map((t) => (
-                          <button key={t}
-                            className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 border border-slate-700/50 hover:border-cyan-500/40 hover:text-cyan-400 hover:bg-cyan-500/5 transition-all">
-                            {t}
-                          </button>
-                        ))}
+                    <form action={formAction} className="space-y-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        <FloatingField id="name" name="name" label="Nama Lengkap *" value={form.name} onChange={set("name")} />
+                        <FloatingField id="email" name="email" label="Email *" type="email" value={form.email} onChange={set("email")} />
                       </div>
-                    </div>
+                      <FloatingField id="subject" name="subject" label="Subjek" value={form.subject} onChange={set("subject")} />
+                      <FloatingField id="message" name="message" label="Pesan *" value={form.message} onChange={set("message")} multiline rows={4} />
 
-                    <motion.button onClick={handleSubmit} disabled={loading}
-                      whileHover={{ scale: 1.01, boxShadow: "0 0 30px rgba(6,182,212,0.2)" }}
-                      whileTap={{ scale: 0.98 }}
-                      className="w-full h-12 rounded-xl font-bold text-sm text-white flex items-center justify-center gap-2.5 relative overflow-hidden disabled:opacity-60"
-                      style={{ background: "linear-gradient(135deg,#06b6d4,#6366f1)" }}>
-                      {loading ? (
-                        <><Loader2 size={16} className="animate-spin" /> Mengirim...</>
-                      ) : (
-                        <><Send size={15} /> Kirim Pesan</>
-                      )}
-                      <motion.div className="absolute inset-0 bg-linear-to-r from-transparent via-white/10 to-transparent"
-                        initial={{ x: "-200%" }}
-                        whileHover={{ x: "200%" }}
-                        transition={{ duration: 0.5 }} />
-                    </motion.button>
+                      {/* Category chips */}
+                      <div>
+                        <div className="text-[10px] text-slate-500 uppercase tracking-widest font-bold mb-2">Topik</div>
+                        <div className="flex gap-2 flex-wrap">
+                          {["Umum", "Partnership", "Technical", "Billing", "Karir"].map((t) => (
+                            <button key={t}
+                              type="button"
+                              className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 border border-slate-700/50 hover:border-cyan-500/40 hover:text-cyan-400 hover:bg-cyan-500/5 transition-all">
+                              {t}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <ContactSubmitButton isSuccess={actionState.success} />
+                    </form>
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -1133,79 +1284,92 @@ function Footer() {
 }
 
 // ── Product Drawer ─────────────────────────────────────────────────────────────
-function ProductDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
+function ProductDrawer({ open, onClose, editingProduct }: {
+  open: boolean;
+  onClose: () => void;
+  editingProduct: Product | null;
+}) { // NOSONAR
+  const router = useRouter();
+  const isEditMode = Boolean(editingProduct);
   const [step, setStep] = useState(1);
-  const [form, setForm] = useState({ name: "", price: "", category: "", description: "", stock: "" });
-  const [focused, setFocused] = useState<string | null>(null);
+  const [form, setForm] = useState({ name: "", price: "", category: "", description: "", stock: "", imageUrl: "" });
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
+  const priceInputRef = useRef<HTMLInputElement>(null);
+  const descInputRef = useRef<HTMLTextAreaElement>(null);
   const set = (k: string) => (v: string) => setForm((f) => ({ ...f, [k]: v }));
 
   const categories = ["Electronics", "Fashion", "Food & Beverage", "Beauty", "Home & Living", "Sports", "Books", "Other"];
 
+  useEffect(() => {
+    const activeProduct = open ? editingProduct : null;
+    const imageUrl = activeProduct?.sourceUrl ?? activeProduct?.source_url ?? "";
+    setForm({
+      name: activeProduct?.name ?? "",
+      price: activeProduct ? String(activeProduct.price ?? "") : "",
+      category: activeProduct?.category ?? "",
+      description: activeProduct?.description ?? "",
+      stock: "",
+      imageUrl,
+    });
+    setError(null);
+    setSuccess(false);
+    setStep(1);
+  }, [open, editingProduct]);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      open && step === 1 && nameInputRef.current?.focus();
+      open && step === 2 && descInputRef.current?.focus();
+    }, 120);
+    return () => clearTimeout(t);
+  }, [open, step]);
+
   const handleSubmit = async () => {
-    setLoading(true);
-    await new Promise((r) => setTimeout(r, 1500));
-    setLoading(false);
-    setSuccess(true);
-    setTimeout(() => {
-      setSuccess(false);
-      setStep(1);
-      setForm({ name: "", price: "", category: "", description: "", stock: "" });
-      onClose();
-    }, 2000);
-  };
+    const name = form.name.trim();
+    const description = form.description.trim();
+    const imageUrl = form.imageUrl.trim();
+    const priceNumber = Number(form.price);
 
-  const FloatingField = ({ id, label, value, onChange, multiline = false, type = "text" }: {
-    id: string; label: string; value: string; onChange: (v: string) => void;
-    multiline?: boolean; type?: string;
-  }) => {
-    const active = focused === id || value.length > 0;
-    const isFocused = focused === id;
-    let fieldColor = "#64748b";
-    if (isFocused || active) {
-      fieldColor = "#22d3ee";
+    if (!name || !description || !Number.isFinite(priceNumber)) {
+      setError("Nama, harga, dan deskripsi wajib diisi.");
+      return;
     }
-    const base = `w-full bg-slate-900/50 border rounded-xl px-4 pt-6 pb-3 text-white text-sm transition-all duration-200 resize-none`;
-    const borderCls = isFocused
-      ? "border-cyan-400/50 shadow-[0_0_0_3px_rgba(6,182,212,0.06)]"
-      : "border-slate-700/50 hover:border-slate-600/60";
-    return (
-      <div className="relative">
-        <label htmlFor={id}
-          className="absolute left-4 pointer-events-none font-medium transition-all duration-200"
-          style={{
-            top: active ? "10px" : "17px",
-            fontSize: active ? "10px" : "14px",
-            color: fieldColor,
-            textTransform: active ? "uppercase" : "none",
-            letterSpacing: active ? "0.12em" : "normal",
-          }}>
-          {label}
-        </label>
-        {multiline ? (
-          <textarea id={id} rows={3} value={value}
-            onChange={(e) => onChange(e.target.value)}
-            onFocus={() => setFocused(id)} onBlur={() => setFocused(null)}
-            className={`${base} ${borderCls}`} />
-        ) : (
-          <input id={id} type={type} value={value}
-            onChange={(e) => onChange(e.target.value)}
-            onFocus={() => setFocused(id)} onBlur={() => setFocused(null)}
-            className={`${base} ${borderCls}`} />
-        )}
-      </div>
-    );
+
+    setError(null);
+    setLoading(true);
+
+    try {
+      const formData = new FormData();
+      formData.append("name", name);
+      formData.append("price", String(priceNumber));
+      formData.append("description", description);
+      formData.append("source_url", imageUrl);
+
+      if (isEditMode && editingProduct) {
+        await updateProductAction(editingProduct.id, formData);
+      } else {
+        await addProductAction(formData);
+      }
+      router.refresh();
+
+      setSuccess(true);
+      setTimeout(() => {
+        setSuccess(false);
+        setStep(1);
+        setForm({ name: "", price: "", category: "", description: "", stock: "", imageUrl: "" });
+        onClose();
+      }, 1000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal menambah produk.");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  let submitContent: React.ReactNode;
-  if (loading) {
-    submitContent = <><Loader2 size={15} className="animate-spin" /> Menyimpan...</>;
-  } else if (success) {
-    submitContent = <><Check size={15} /> Berhasil Ditambahkan!</>;
-  } else {
-    submitContent = <><Plus size={15} /> Tambah Produk</>;
-  }
+  const submitContent = getProductDrawerSubmitContent(loading, success, isEditMode);
 
   return (
     <AnimatePresence>
@@ -1225,7 +1389,7 @@ function ProductDrawer({ open, onClose }: { open: boolean; onClose: () => void }
               <div className="flex items-start justify-between">
                 <div>
                   <div className="text-[10px] font-black tracking-[0.25em] text-cyan-400 uppercase mb-1.5">New Listing</div>
-                  <h2 className="font-display text-xl font-black text-white">Tambah Produk</h2>
+                  <h2 className="font-display text-xl font-black text-white">{getProductDrawerHeaderTitle(isEditMode)}</h2>
                   <p className="text-slate-500 text-xs mt-1">Langkah {step} dari 2</p>
                 </div>
                 <button onClick={onClose}
@@ -1254,10 +1418,26 @@ function ProductDrawer({ open, onClose }: { open: boolean; onClose: () => void }
                   <motion.div key="step1" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.25 }}
                     className="space-y-4">
-                    <FloatingField id="pname" label="Nama Produk *" value={form.name} onChange={set("name")} />
+                    <FloatingField id="pname" label="Nama Produk *" value={form.name} onChange={set("name")}
+                      inputRef={nameInputRef}
+                      enterKeyHint="next"
+                      autoComplete="off"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          priceInputRef.current?.focus();
+                        }
+                      }} />
                     <div className="grid grid-cols-2 gap-3">
-                      <FloatingField id="pprice" label="Harga (IDR) *" type="number" value={form.price} onChange={set("price")} />
-                      <FloatingField id="pstock" label="Stok" type="number" value={form.stock} onChange={set("stock")} />
+                      <FloatingField id="pprice" label="Harga (IDR) *" type="number" value={form.price} onChange={set("price")}
+                        inputRef={priceInputRef}
+                        inputMode="numeric"
+                        enterKeyHint="next"
+                        autoComplete="off" />
+                      <FloatingField id="pstock" label="Stok" type="number" value={form.stock} onChange={set("stock")}
+                        inputMode="numeric"
+                        enterKeyHint="next"
+                        autoComplete="off" />
                     </div>
                     <div>
                       <div className="text-[10px] font-black tracking-[0.2em] text-slate-500 uppercase mb-2">Kategori</div>
@@ -1280,7 +1460,25 @@ function ProductDrawer({ open, onClose }: { open: boolean; onClose: () => void }
                   <motion.div key="step2" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.25 }}
                     className="space-y-4">
-                    <FloatingField id="pdesc" label="Deskripsi Produk" value={form.description} onChange={set("description")} multiline />
+                    {error && (
+                      <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+                        {error}
+                      </div>
+                    )}
+                    <FloatingField id="pimage" label="Image URL" value={form.imageUrl} onChange={set("imageUrl")}
+                      type="url"
+                      autoComplete="off" />
+                    <FloatingField id="pdesc" label="Deskripsi Produk" value={form.description} onChange={set("description")} multiline rows={3}
+                      inputRef={descInputRef}
+                      enterKeyHint="done"
+                      autoComplete="off"
+                      onKeyDown={(e) => {
+                        if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && !loading && !success) {
+                          e.preventDefault();
+                          void handleSubmit();
+                        }
+                      }} />
+                    <p className="text-[11px] text-slate-500 -mt-2">Tip: tekan Ctrl + Enter untuk simpan lebih cepat.</p>
 
                     {/* Preview */}
                     {(form.name || form.price) && (
@@ -1291,10 +1489,18 @@ function ProductDrawer({ open, onClose }: { open: boolean; onClose: () => void }
                         </div>
                         <div className="p-4">
                           <div className="flex items-start gap-3">
-                            <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
-                              style={{ background: "linear-gradient(135deg,rgba(6,182,212,0.12),rgba(99,102,241,0.12))", border: "1px solid rgba(6,182,212,0.2)" }}>
-                              <Package size={18} className="text-cyan-400" />
-                            </div>
+                            {form.imageUrl ? (
+                              <img
+                                src={form.imageUrl}
+                                alt={form.name || "Preview image"}
+                                className="h-12 w-12 shrink-0 rounded-xl object-cover"
+                              />
+                            ) : (
+                              <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
+                                style={{ background: "linear-gradient(135deg,rgba(6,182,212,0.12),rgba(99,102,241,0.12))", border: "1px solid rgba(6,182,212,0.2)" }}>
+                                <Package size={18} className="text-cyan-400" />
+                              </div>
+                            )}
                             <div>
                               <div className="text-white font-bold text-sm">{form.name || "Nama Produk"}</div>
                               {form.category && <div className="text-slate-500 text-xs mb-1">{form.category}</div>}
@@ -1376,21 +1582,81 @@ function FAB({ onClick }: { onClick: () => void }) {
   );
 }
 
+function getProductDrawerHeaderTitle(isEditMode: boolean) {
+  return isEditMode ? "Edit Produk" : "Tambah Produk";
+}
+
+function getProductDrawerSubmitContent(loading: boolean, success: boolean, isEditMode: boolean) {
+  if (loading) {
+    return <><Loader2 size={15} className="animate-spin" /> Menyimpan...</>;
+  }
+
+  if (success) {
+    return <><Check size={15} /> {isEditMode ? "Berhasil Diupdate!" : "Berhasil Ditambahkan!"}</>;
+  }
+
+  return <><Plus size={15} /> {isEditMode ? "Update Produk" : "Tambah Produk"}</>;
+}
+
 // ── Root ──────────────────────────────────────────────────────────────────────
-export function ClientSections({ products }: Props) {
+export function ClientSections({ products, session, isAdmin: isAdminOverride }: Props) {
+  const router = useRouter();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const isAdmin = isAdminOverride ?? session?.user?.role === "admin";
+  const isLoggedIn = Boolean(session?.user?.email);
+
+  const openCreateDrawer = () => {
+    if (!isAdmin) return;
+    setEditingProduct(null);
+    setDrawerOpen(true);
+  };
+
+  const openEditDrawer = (product: Product) => {
+    if (!isAdmin) return;
+    setEditingProduct(product);
+    setDrawerOpen(true);
+  };
+
+  const handleDeleteProduct = async (productId: number) => {
+    if (!isAdmin) return;
+    const confirmed = globalThis.confirm("Hapus produk ini? Tindakan ini tidak bisa dibatalkan.");
+    if (!confirmed) return;
+
+    try {
+      await deleteProductAction(productId);
+      router.refresh();
+    } catch (err) {
+      globalThis.alert(err instanceof Error ? err.message : "Gagal menghapus produk.");
+    }
+  };
 
   return (
     <>
-      <Navbar onAddProduct={() => setDrawerOpen(true)} />
-      <Hero onAddProduct={() => setDrawerOpen(true)} />
+      <Navbar onAddProduct={openCreateDrawer} isAdmin={isAdmin} isLoggedIn={isLoggedIn} />
+      <Hero onAddProduct={openCreateDrawer} />
       <Stats />
       <About />
-      <Products onAddProduct={() => setDrawerOpen(true)} />
+      <Products
+        products={products}
+        onAddProduct={openCreateDrawer}
+        onEditProduct={openEditDrawer}
+        onDeleteProduct={handleDeleteProduct}
+        canManage={isAdmin}
+      />
       <Contact />
       <Footer />
-      <FAB onClick={() => setDrawerOpen(true)} />
-      <ProductDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
+      <FAB onClick={openCreateDrawer} />
+      {isAdmin && (
+        <ProductDrawer
+          open={drawerOpen}
+          onClose={() => {
+            setDrawerOpen(false);
+            setEditingProduct(null);
+          }}
+          editingProduct={editingProduct}
+        />
+      )}
     </>
   );
 }
