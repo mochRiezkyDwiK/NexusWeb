@@ -1,36 +1,94 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# NexusWeb Market
 
-## Getting Started
+NexusWeb Market adalah web marketplace modern berbasis Next.js yang dirancang untuk menampilkan produk secara premium, responsif, dan profesional. Aplikasi ini memiliki sistem autentikasi admin, CRUD produk, formulir kontak yang tersimpan ke database, serta integrasi Drizzle ORM dan TiDB Cloud.
 
-First, run the development server:
+## Ringkasan
+
+Proyek ini dibuat untuk menjadi landing page dan marketplace kecil yang terlihat kredibel, cepat, dan mudah dikelola. Admin dapat menambah, mengubah, dan menghapus produk, sedangkan pengunjung dapat melihat katalog produk dan mengirim pesan melalui form kontak.
+
+## Fitur Utama
+
+- Landing page modern dan responsif
+- Hero section, about section, services, product catalog, dan contact form
+- Login dengan Auth.js v5 dan GitHub provider
+- Role-based access control untuk admin
+- CRUD produk: tambah, edit, hapus
+- Dukungan image URL untuk produk
+- Form kontak yang menyimpan pesan ke database
+- Integrasi Drizzle ORM
+- Database TiDB Cloud
+- UI premium dengan animasi dan efek glassmorphism
+
+## Tech Stack
+
+- Next.js
+- React
+- TypeScript
+- Auth.js v5 / NextAuth
+- Drizzle ORM
+- TiDB Cloud Serverless
+- Framer Motion
+- Lucide React
+
+## Cara Menjalankan
+
+### 1. Install dependency
+
+```bash
+npm install
+```
+
+### 2. Isi environment variable
+
+Buat file `.env` lalu sesuaikan variabel berikut:
+
+```env
+DATABASE_URL=
+AUTH_GITHUB_ID=
+AUTH_GITHUB_SECRET=
+AUTH_ADMIN_EMAIL=
+AUTH_SECRET=
+AUTH_TRUST_HOST=true
+```
+
+### 3. Jalankan development server
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Buka:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+http://localhost:3000
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Skrip Tersedia
 
-## Learn More
+```bash
+npm run dev
+npm run build
+npm run start
+npm run lint
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Struktur Singkat
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- `app/page.tsx` - halaman utama dan fetch data server-side
+- `app/components/ClientSections.tsx` - UI utama client, termasuk product list dan drawer
+- `app/lib/actions.ts` - server actions untuk CRUD produk dan pesan kontak
+- `auth.ts` - konfigurasi Auth.js v5
+- `db/schema.ts` - schema Drizzle
+- `app/api/auth/[...nextauth]/route.ts` - route handler Auth.js
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Catatan Admin
 
-## Deploy on Vercel
+Akun admin ditentukan dari email yang sama dengan `AUTH_ADMIN_EMAIL`. Jika email login cocok, session akan mendapatkan role `admin` dan tombol admin seperti Add Product akan muncul.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Deploy
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Aplikasi ini bisa dideploy ke platform yang mendukung Next.js seperti Vercel atau hosting Node.js lainnya. Pastikan environment variable sudah diisi dan database sudah terhubung.
+
+## Lisensi
+
+Private project.
